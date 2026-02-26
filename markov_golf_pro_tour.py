@@ -62,10 +62,13 @@ P[s['Rough_Short'], s['Green_Lag']] = 0.20
 P[s['Rough_Short'], s['Rough_Short']] = 0.20
 P[s['Rough_Short'], s['Bunker_Greenside']] = 0.15
 
-# 6. BUNKER FAIRWAY
-# Primarily a 'layup' or recovery shot.
-P[s['Bunker_Fairway'], s['Fairway_Short']] = 0.70
-P[s['Bunker_Fairway'], s['Rough_Short']] = 0.30
+# 6. BUNKER FAIRWAY (REFINED FOR PROS)
+# Pros take on the green ~95% of the time, achieving GIR ~52% of the time.
+P[s['Bunker_Fairway'], s['Green_Lag']] = 0.42     # Main GIR target from distance
+P[s['Bunker_Fairway'], s['Green_Short']] = 0.10   # Elite proximity from sand
+P[s['Bunker_Fairway'], s['Rough_Short']] = 0.28   # Missed green into rough
+P[s['Bunker_Fairway'], s['Bunker_Greenside']] = 0.15 # Missed green into greenside sand
+P[s['Bunker_Fairway'], s['Bunker_Fairway']] = 0.05   # Chunked/Left in bunker
 
 # 7. BUNKER GREENSIDE
 # Pros get 'up and down' ~50% of the time.
@@ -93,3 +96,7 @@ print("="*60)
 print(f"PGA TOUR GRANULAR MODEL | Expected Score: {expected:.2f}")
 print("="*60)
 print(pd.DataFrame(P, index=states, columns=states))
+
+# Analytical check of Fairway Bunker performance
+fb_expected = pro_hole.calculate_expected_steps('Bunker_Fairway')
+print(f"\nExpected Strokes from Fairway Bunker: {fb_expected:.2f}")
