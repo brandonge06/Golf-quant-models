@@ -3,60 +3,93 @@ import pandas as pd
 from markov_golf_engine import GolfHole
 
 """
-HYPER-ACCURATE 2023-2024 PGA TOUR MARKOV MODEL
-Built using ShotLink Data and official PGA Tour season averages.
+PGA TOUR GRANULAR PERFORMANCE MODEL
+Uses distance-based states to solve the 'memoryless' limitation of standard Markov chains.
+Data: 2024 PGA Tour ShotLink Averages.
 
-STATISTICAL FOUNDATION:
-- Driving Accuracy: 59% (Fairway), 31% (Rough/Penalty), 9% (Bunker), 1% (Driveable Green)
-- Approach (Fairway): 78% GIR, 15% Miss to Rough, 6% Miss to Bunker, 1% Hole-out
-- Approach (Rough): 50% GIR, 35% Miss to Rough, 14% Miss to Bunker, 1% Hole-out
-- Sand Play: 85% to Green, 8% to Rough, 5% left in Bunker, 2% Hole-out
-- Putting: Tour average is 1.64 putts per hole. To achieve an expected value of 1.64 
-  in a memoryless Markov chain, the Green->Hole probability must be 1 / 1.64 = 61%.
+STATE DEFINITIONS:
+- Tee: The starting point of the hole (Par 4, ~440 yards).
+- Fairway_Long: Ball in fairway, distance to green > 175 yards.
+- Fairway_Short: Ball in fairway, distance to green < 175 yards (scoring distance).
+- Rough_Long: Ball in rough, distance to green > 175 yards (low control).
+- Rough_Short: Ball in rough, distance to green < 175 yards (partial control).
+- Bunker_Fairway: Ball in a fairway bunker, typically 200+ yards from green.
+- Bunker_Greenside: Ball in a bunker immediately adjacent to the green.
+- Green_Lag: Ball on the green, distance to hole > 40 feet (high 3-putt risk).
+- Green_Short: Ball on the green, distance to hole < 40 feet (1-putt/2-putt zone).
+- Hole: Ball is in the hole (absorbing state).
 """
 
-states = ['Tee', 'Fairway', 'Rough', 'Bunker', 'Green', 'Hole']
+states = [
+    'Tee', 'Fairway_Long', 'Fairway_Short', 'Rough_Long', 'Rough_Short', 
+    'Bunker_Fairway', 'Bunker_Greenside', 'Green_Lag', 'Green_Short', 'Hole'
+]
+s = {state: i for i, state in enumerate(states)}
+P = np.zeros((len(states), len(states)))
 
-P_hyper = np.array([
-    # Tee -> [Tee, Fairway, Rough, Bunker, Green, Hole]
-    [0.00, 0.59, 0.31, 0.09, 0.01, 0.00],  
-    # Fairway -> [Tee, Fairway, Rough, Bunker, Green, Hole]
-    [0.00, 0.00, 0.15, 0.06, 0.78, 0.01],  
-    # Rough -> [Tee, Fairway, Rough, Bunker, Green, Hole]
-    [0.00, 0.00, 0.35, 0.14, 0.50, 0.01],  
-    # Bunker -> [Tee, Fairway, Rough, Bunker, Green, Hole]
-    [0.00, 0.00, 0.08, 0.05, 0.85, 0.02],  
-    # Green -> [Tee, Fairway, Rough, Bunker, Green, Hole]
-    [0.00, 0.00, 0.00, 0.00, 0.39, 0.61],  
-    # Hole (Absorbing State)
-    [0.00, 0.00, 0.00, 0.00, 0.00, 1.00]   
-])
+# 1. TEE SHOT (440yd Par 4)
+# 60% Fairway (split 50/50), 30% Rough, 10% Bunker/Penalty
+P[s['Tee'], s['Fairway_Long']] = 0.30
+P[s['Tee'], s['Fairway_Short']] = 0.30
+P[s['Tee'], s['Rough_Long']] = 0.15
+P[s['Tee'], s['Rough_Short']] = 0.15
+P[s['Tee'], s['Bunker_Fairway']] = 0.10
 
-# Ensure all rows sum to 1.0
-assert np.allclose(P_hyper.sum(axis=1), 1.0), "Probabilities do not sum to 1.0"
+# 2. FAIRWAY LONG (>175 yards)
+# Pros hit ~65% GIR from here, mostly into 'Lag' distance.
+P[s['Fairway_Long'], s['Green_Lag']] = 0.45
+P[s['Fairway_Long'], s['Green_Short']] = 0.20
+P[s['Fairway_Long'], s['Rough_Short']] = 0.20
+P[s['Fairway_Long'], s['Bunker_Greenside']] = 0.15
 
-hyper_hole = GolfHole(states, P_hyper)
+# 3. FAIRWAY SHORT (<175 yards)
+# Pros hit ~90% GIR from here, high chance of 'Short' putts.
+P[s['Fairway_Short'], s['Green_Short']] = 0.65
+P[s['Fairway_Short'], s['Green_Lag']] = 0.25
+P[s['Fairway_Short'], s['Rough_Short']] = 0.09
+P[s['Fairway_Short'], s['Hole']] = 0.01
 
-print("="*70)
-print("HYPER-ACCURATE 2023-2024 PGA TOUR MARKOV MODEL (PAR 4)")
-print("="*70)
-print(pd.DataFrame(P_hyper, index=states, columns=states))
+# 4. ROUGH LONG (>175 yards)
+# Lower control; reaching the green usually results in a 'Lag' putt.
+P[s['Rough_Long'], s['Green_Lag']] = 0.35
+P[s['Rough_Long'], s['Rough_Short']] = 0.45
+P[s['Rough_Long'], s['Bunker_Greenside']] = 0.20
 
-tour_expected = hyper_hole.calculate_expected_steps('Tee')
-print(f"\\nExpected Strokes (PGA Tour Average): {tour_expected:.4f}")
+# 5. ROUGH SHORT (<175 yards)
+# Partial control allows for some 'Short' green hits.
+P[s['Rough_Short'], s['Green_Short']] = 0.45
+P[s['Rough_Short'], s['Green_Lag']] = 0.20
+P[s['Rough_Short'], s['Rough_Short']] = 0.20
+P[s['Rough_Short'], s['Bunker_Greenside']] = 0.15
 
-# Let's model an Elite Ball Striker (e.g., Collin Morikawa or Scottie Scheffler)
-# Elite Driving: 68% Fairway. Elite Approach: 82% GIR from fairway.
-P_elite = P_hyper.copy()
-P_elite[0] = [0.00, 0.68, 0.23, 0.08, 0.01, 0.00] # Elite Tee
-P_elite[1] = [0.00, 0.00, 0.12, 0.05, 0.82, 0.01] # Elite Fairway Approach
+# 6. BUNKER FAIRWAY
+# Primarily a 'layup' or recovery shot.
+P[s['Bunker_Fairway'], s['Fairway_Short']] = 0.70
+P[s['Bunker_Fairway'], s['Rough_Short']] = 0.30
 
-elite_hole = GolfHole(states, P_elite)
-elite_expected = elite_hole.calculate_expected_steps('Tee')
+# 7. BUNKER GREENSIDE
+# Pros get 'up and down' ~50% of the time.
+P[s['Bunker_Greenside'], s['Green_Short']] = 0.75
+P[s['Bunker_Greenside'], s['Green_Lag']] = 0.20
+P[s['Bunker_Greenside'], s['Bunker_Greenside']] = 0.05
 
-print("\\n" + "-"*70)
-print(f"Elite Ball-Striker Expectation: {elite_expected:.4f}")
-print(f"Strokes Gained vs Field (Per Hole): {tour_expected - elite_expected:.4f}")
-print(f"Strokes Gained vs Field (Per Round): {(tour_expected - elite_expected) * 18:.2f}")
-print(f"Strokes Gained vs Field (72-Hole Tournament): {(tour_expected - elite_expected) * 72:.2f}")
-print("-"*70)
+# 8. GREEN LAG (40+ feet)
+# Primary goal is to lag into 'Short' range; low miracle make rate.
+P[s['Green_Lag'], s['Green_Short']] = 0.94
+P[s['Green_Lag'], s['Hole']] = 0.06
+
+# 9. GREEN SHORT (<40 feet)
+# Majority are 2-putts (stay in Short) or 1-putts (Hole).
+P[s['Green_Short'], s['Hole']] = 0.65
+P[s['Green_Short'], s['Green_Short']] = 0.35
+
+# 10. HOLE
+P[s['Hole'], s['Hole']] = 1.0
+
+pro_hole = GolfHole(states, P)
+expected = pro_hole.calculate_expected_steps('Tee')
+
+print("="*60)
+print(f"PGA TOUR GRANULAR MODEL | Expected Score: {expected:.2f}")
+print("="*60)
+print(pd.DataFrame(P, index=states, columns=states))

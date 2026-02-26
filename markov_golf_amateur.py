@@ -3,60 +3,92 @@ import pandas as pd
 from markov_golf_engine import GolfHole
 
 """
-AMATEUR GOLFER MARKOV MODEL (Approx. 15-20 Handicap)
-Based on Arccos/ShotScope average amateur statistics.
+AMATEUR (20-HANDICAP) GRANULAR PERFORMANCE MODEL
+Uses distance-based states to model amateur struggles.
+Data: Arccos/ShotScope average amateur statistics.
 
-STATISTICAL FOUNDATION:
-- Driving Accuracy: 45% (Fairway), 45% (Rough), 10% (Bunker/Penalty)
-- Approach (Fairway): 25% GIR, 50% Miss to Rough, 20% Miss to Bunker, 5% duff/stay in fairway
-- Approach (Rough): 10% GIR, 60% Miss to Rough, 25% Miss to Bunker, 5% duff/stay in rough
-- Sand Play: 40% to Green, 40% to Rough, 20% left in Bunker
-- Putting: Amateur average is 2.2 putts per hole. 
-  To achieve an expected value of 2.2 in a memoryless Markov chain, 
-  the Green->Hole probability must be 1 / 2.2 = 45%.
+STATE DEFINITIONS:
+- Tee: The starting point of the hole (Par 4, ~440 yards).
+- Fairway_Long: Ball in fairway, distance to green > 175 yards.
+- Fairway_Short: Ball in fairway, distance to green < 175 yards (scoring distance).
+- Rough_Long: Ball in rough, distance to green > 175 yards (high penalty).
+- Rough_Short: Ball in rough, distance to green < 175 yards (low precision).
+- Bunker_Fairway: Ball in a fairway bunker, typically 200+ yards from green.
+- Bunker_Greenside: Ball in a bunker immediately adjacent to the green.
+- Green_Lag: Ball on the green, distance to hole > 40 feet (high 3-putt risk).
+- Green_Short: Ball on the green, distance to hole < 40 feet (1-putt/2-putt zone).
+- Hole: Ball is in the hole (absorbing state).
 """
 
-states = ['Tee', 'Fairway', 'Rough', 'Bunker', 'Green', 'Hole']
+states = [
+    'Tee', 'Fairway_Long', 'Fairway_Short', 'Rough_Long', 'Rough_Short', 
+    'Bunker_Fairway', 'Bunker_Greenside', 'Green_Lag', 'Green_Short', 'Hole'
+]
+s = {state: i for i, state in enumerate(states)}
+P = np.zeros((len(states), len(states)))
 
-P_amateur = np.array([
-    # Tee -> [Tee, Fairway, Rough, Bunker, Green, Hole]
-    [0.00, 0.45, 0.45, 0.10, 0.00, 0.00],  
-    # Fairway -> [Tee, Fairway, Rough, Bunker, Green, Hole]
-    [0.00, 0.05, 0.50, 0.20, 0.25, 0.00],  
-    # Rough -> [Tee, Fairway, Rough, Bunker, Green, Hole]
-    [0.00, 0.00, 0.65, 0.25, 0.10, 0.00],  
-    # Bunker -> [Tee, Fairway, Rough, Bunker, Green, Hole]
-    [0.00, 0.00, 0.40, 0.20, 0.40, 0.00],  
-    # Green -> [Tee, Fairway, Rough, Bunker, Green, Hole]
-    [0.00, 0.00, 0.00, 0.00, 0.55, 0.45],  
-    # Hole (Absorbing State)
-    [0.00, 0.00, 0.00, 0.00, 0.00, 1.00]   
-])
+# 1. TEE SHOT (440yd Par 4)
+# Lower accuracy (40% fairway), high miss into rough/hazards.
+P[s['Tee'], s['Fairway_Long']] = 0.20
+P[s['Tee'], s['Fairway_Short']] = 0.20
+P[s['Tee'], s['Rough_Long']] = 0.25
+P[s['Tee'], s['Rough_Short']] = 0.25
+P[s['Tee'], s['Bunker_Fairway']] = 0.10
 
-# Ensure all rows sum to 1.0
-assert np.allclose(P_amateur.sum(axis=1), 1.0), "Probabilities do not sum to 1.0"
+# 2. FAIRWAY LONG (>175 yards)
+# Amateurs struggle with long irons; high chance of rough or short.
+P[s['Fairway_Long'], s['Green_Lag']] = 0.15
+P[s['Fairway_Long'], s['Rough_Short']] = 0.50
+P[s['Fairway_Long'], s['Bunker_Greenside']] = 0.25
+P[s['Fairway_Long'], s['Fairway_Long']] = 0.10
 
-amateur_hole = GolfHole(states, P_amateur)
+# 3. FAIRWAY SHORT (<175 yards)
+# Precision is still difficult; lots of misses to 'Rough Short'.
+P[s['Fairway_Short'], s['Green_Short']] = 0.25
+P[s['Fairway_Short'], s['Green_Lag']] = 0.25
+P[s['Fairway_Short'], s['Rough_Short']] = 0.40
+P[s['Fairway_Short'], s['Bunker_Greenside']] = 0.10
 
-print("="*70)
-print("AMATEUR GOLFER MARKOV MODEL (PAR 4 - 15-20 HANDICAP)")
-print("="*70)
-print(pd.DataFrame(P_amateur, index=states, columns=states))
+# 4. ROUGH LONG (>175 yards)
+# Often results in a layup or difficult recovery.
+P[s['Rough_Long'], s['Rough_Short']] = 0.50
+P[s['Rough_Long'], s['Bunker_Greenside']] = 0.30
+P[s['Rough_Long'], s['Rough_Long']] = 0.20
 
-am_expected = amateur_hole.calculate_expected_steps('Tee')
-print(f"\\nExpected Strokes for Average Amateur: {am_expected:.2f}")
+# 5. ROUGH SHORT (<175 yards)
+# Misses often end up in more rough or the bunker.
+P[s['Rough_Short'], s['Green_Lag']] = 0.15
+P[s['Rough_Short'], s['Rough_Short']] = 0.60
+P[s['Rough_Short'], s['Bunker_Greenside']] = 0.25
 
-# Sensitivity Analysis: What if they practice putting?
-# Improve putting to 2.0 per hole (Green->Hole = 50%)
-P_better_putter = P_amateur.copy()
-P_better_putter[states.index('Green'), states.index('Green')] = 0.50
-P_better_putter[states.index('Green'), states.index('Hole')] = 0.50
+# 6. BUNKER FAIRWAY
+# Most amateurs take multiple shots to escape.
+P[s['Bunker_Fairway'], s['Rough_Short']] = 0.70
+P[s['Bunker_Fairway'], s['Bunker_Fairway']] = 0.30
 
-better_putter_hole = GolfHole(states, P_better_putter)
-improved_expected = better_putter_hole.calculate_expected_steps('Tee')
+# 7. BUNKER GREENSIDE
+# Low precision leads to high chance of staying in bunker or missing far.
+P[s['Bunker_Greenside'], s['Green_Lag']] = 0.30
+P[s['Bunker_Greenside'], s['Bunker_Greenside']] = 0.40
+P[s['Bunker_Greenside'], s['Rough_Short']] = 0.30
 
-print("\\n" + "-"*70)
-print(f"Original Expected Score: {am_expected:.4f}")
-print(f"Improved Putting (2.0 putts/hole): {improved_expected:.4f}")
-print(f"Strokes saved per 18 holes: {(am_expected - improved_expected) * 18:.2f}")
-print("-"*70)
+# 8. GREEN LAG (40+ feet)
+# Significant chance of leaving the next putt also in 'Lag' distance.
+P[s['Green_Lag'], s['Green_Short']] = 0.75
+P[s['Green_Lag'], s['Green_Lag']] = 0.25
+
+# 9. GREEN SHORT (<40 feet)
+# Amateurs are roughly 45% to hole it in 1 from here.
+P[s['Green_Short'], s['Hole']] = 0.45
+P[s['Green_Short'], s['Green_Short']] = 0.55
+
+# 10. HOLE
+P[s['Hole'], s['Hole']] = 1.0
+
+am_hole = GolfHole(states, P)
+expected = am_hole.calculate_expected_steps('Tee')
+
+print("="*60)
+print(f"AMATEUR GRANULAR MODEL | Expected Score: {expected:.2f}")
+print("="*60)
+print(pd.DataFrame(P, index=states, columns=states))
