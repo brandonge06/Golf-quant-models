@@ -1,0 +1,39 @@
+# PGA Tour Performance Statistics Documentation (2024-2025)
+
+This document details the statistical benchmarks used for the "Average PGA Tour Metrics" in the Golf Quant Score Prediction application. Data is sourced from PGA Tour ShotLink averages for the 2024 and 2025 seasons.
+
+## 1. Greenside Bunker Performance
+*   **Sand Save Percentage (Up & Down):** 53.76% (Average)
+*   **Proximity to Hole:** 9' 2" (Average)
+*   **Derived Markov Probabilities:**
+    *   **Green Short (3-10ft):** 68% - Pros strike the ball first with a low point 4 inches in front of the ball, consistently leaving the ball in the "makeable" 3-10ft range.
+    *   **Green Lag (30ft+):** 22% - Accounting for difficult short-sided pins or long bunker shots.
+    *   **Escape to Rough:** 8% - "Thin" or "bladed" misses that travel over the green.
+    *   **Stay in Bunker:** 2% - Statistical average for elite professionals failing to exit on the first attempt.
+
+## 2. Fairway Bunker Performance (Par 4 Approach)
+*   **Greens in Regulation (GIR):** 47.5%
+*   **Proximity (from 150-175 yds):** 38 feet (vs 27 feet from fairway)
+*   **Derived Markov Probabilities:**
+    *   **Green Lag (30ft+):** 30% - The most common "successful" outcome.
+    *   **Green Short (3-10ft):** 18% - Elite precision from the sand.
+    *   **Missed Green (to Rough):** 35% - Offline misses that remain near the green (chip/pitch range).
+    *   **Wedge Range (50+ yds):** 15% - "Fat" or "chunked" shots that come up significantly short.
+    *   **Stay in Bunker:** 2% - Failing to clear the lip or hitting the sand significantly early.
+
+## 3. Putting (PGA Tour Averages)
+*   **3 Feet:** 99.4%
+*   **5 Feet:** 80%
+*   **8 Feet (The "50/50" Mark):** 50%
+*   **10 Feet:** 41%
+*   **30 Feet (Lag Make %):** 7%
+*   **Derived Markov Probabilities:**
+    *   **Short Putt Make (3-10ft):** 88% (Weighted average based on proximity distribution).
+    *   **Lag to Tap-in (<3ft):** 80%
+    *   **Lag to Short (3-10ft):** 13%
+
+## 4. Approach Play (GIR from 150-175 yds)
+*   **From Fairway:** 68% GIR / 27' Proximity
+*   **From Rough:** 48% GIR / 43' Proximity
+
+Sources: pgatour.com (ShotLink), DataGolf, "Every Shot Counts" (Mark Broadie), and Lou Stagner (Golf Stat Pro).
