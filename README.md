@@ -1,4 +1,4 @@
-# Golf Quantitative Models: Markov Chain Expected Score Simulator
+# Markov Chain Expected Score Simulator
 
 This project uses a Markov chain to model a par-4 golf hole and calculate the expected number of strokes to complete it. It employs both analytical linear algebra and Monte Carlo simulations to verify results and perform sensitivity analysis on player performance.
 
